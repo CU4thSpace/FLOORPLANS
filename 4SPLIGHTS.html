@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LB-103 Lighting Plan</title>
+<style>
+:root{--bg:#f3f3f1;--panel:#fff;--ink:#1d1f2b;--mute:#666a78;--line:#d6d7dd;--acc:#2b2f8f}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0 8px 0 0}
+button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+main{flex:1;display:flex;min-height:0}
+#stage{flex:1;overflow:auto;padding:10px;min-width:0}
+svg#plan{width:100%;height:auto;max-width:1400px;display:block;background:#fff;border:1px solid var(--line);touch-action:none}
+aside{width:290px;flex:none;background:var(--panel);border-left:1px solid var(--line);padding:12px;overflow:auto}
+aside h2{font-size:14px;margin:14px 0 6px}
+aside h2:first-child{margin-top:0}
+label{display:block;margin:8px 0 0;color:var(--mute);font-size:13px}
+label span{float:right;color:var(--ink);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%}
+input[type=number]{width:100%;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.read{margin-top:10px;padding:8px;background:var(--bg);border-radius:6px;font-size:13px}
+.hint{color:var(--mute);font-size:12px;margin:6px 0 0}
+@media (max-width:760px){main{flex-direction:column}aside{width:auto;border-left:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>LB-103 lighting plan</h1>
+  <button id="mAdd" class="on">Add fixtures</button>
+  <button id="mSel">Select / move</button>
+  <button id="bLight" class="on">Light</button>
+  <button id="bGlow">Show beam centres</button>
+  <button id="bInv">Invert plan</button>
+  <button id="bClear">Clear all</button>
+</header>
+<main>
+<div id="stage">
+<svg id="plan" viewBox="0 0 1984 1544" aria-label="Floorplan with track lighting">
+  <image id="bg" width="1984" height="1544"/>
+  <g id="tracks"></g><g id="lights" style="mix-blend-mode:multiply"></g><g id="fix"></g>
+</svg>
+</div>
+<aside>
+  <h2>Selected fixture</h2>
+  <div id="none" class="hint">Click a track to add a fixture. Click a fixture to edit it, drag it along its track.</div>
+  <div id="ctl" hidden>
+    <label>Tilt from straight down <span id="vTilt"></span><input id="tilt" type="range" min="0" max="70" step="1"></label>
+    <label>Aim direction (0° = up the plan, clockwise) <span id="vAz"></span><input id="az" type="range" min="0" max="359" step="1"></label>
+    <label>Beam angle <span id="vBeam"></span><input id="beam" type="range" min="10" max="80" step="1"></label>
+    <label>Mount height (m) <span id="vH"></span><input id="h" type="range" min="2" max="6" step="0.1"></label>
+    <div class="row"><button id="applyAll">Apply to all fixtures</button><button id="dup">Duplicate</button><button id="del">Delete</button></div>
+    <div class="read" id="read"></div>
+  </div>
+  <h2>Plan</h2>
+  <label>Scale (pixels per metre) <input id="scale" type="number" min="10" max="300" step="1"></label>
+  <p class="hint">Set from the plan's 40 cm grid (about 24.7 px per square, so 62 px per metre).</p>
+  <label>Light opacity <span id="vOp"></span><input id="op" type="range" min="10" max="80" step="1"></label>
+  <p class="hint" id="count"></p>
+  <p class="hint">Delete removes the selected fixture. Arrow keys slide it along the track.</p>
+</aside>
+</main>
+<script>
+const IMG="floorplan.png"; // <-- change to the URL or file name of your floorplan image
+const NS="http://www.w3.org/2000/svg";
+const TRACKS=[{y:521,x1:506,x2:1435},{y:711,x1:218,x2:1441},{y:896,x1:218,x2:1441},{y:1040,x1:218,x2:1441}];
+const D={tilt:0,az:0,beam:36,h:3.5};
+let S={scale:62,op:38,fx:[{t:1,x:1408,tilt:0,az:0,beam:36,h:3.5}]},sel=0,mode="add",showLight=true,showCentre=false,drag=null;
+try{const s=JSON.parse(localStorage.getItem("lb103-lights-v2")||"null");if(s&&s.fx)S=s}catch(e){}
+const $=id=>document.getElementById(id),svg=$("plan");
+$("bg").setAttribute("href",IMG);
+const el=(n,a,p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
+const rad=d=>d*Math.PI/180;
+function save(){try{localStorage.setItem("lb103-lights-v2",JSON.stringify(S))}catch(e){}}
+function footprint(f){ // floor ellipse in metres, relative to the fixture
+  const a=rad(f.beam/2),t=rad(f.tilt),lo=Math.max(t-a,0),hi=Math.min(t+a,rad(80));
+  const near=f.h*Math.tan(lo),far=f.h*Math.tan(hi);
+  const slant=f.h/Math.cos(t);
+  return {off:(near+far)/2,rMaj:(far-near)/2,rMin:slant*Math.tan(a)};
+}
+function draw(){
+  const inv=!!S.inv,TC=inv?"#7f88ff":"#2b2f8f",RING=inv?"#111":"#fff";
+  svg.style.background=inv?"#111":"#fff";
+  $("bg").style.filter=inv?"invert(1)":"none";
+  $("lights").style.mixBlendMode=inv?"screen":"multiply";
+  $("bInv").classList.toggle("on",inv);
+  const T=$("tracks");T.innerHTML="";
+  TRACKS.forEach((k,i)=>el("rect",{x:k.x1,y:k.y-4,width:k.x2-k.x1,height:8,fill:TC,rx:2},T));
+  const L=$("lights"),F=$("fix");L.innerHTML="";F.innerHTML="";
+  S.fx.forEach((f,i)=>{
+    const p=footprint(f),az=rad(f.az),dx=Math.sin(az),dy=-Math.cos(az);
+    const cx=f.x+dx*p.off*S.scale,cy=TRACKS[f.t].y+dy*p.off*S.scale;
+    if(showLight)el("ellipse",{cx,cy,rx:p.rMaj*S.scale,ry:p.rMin*S.scale,transform:`rotate(${f.az-90} ${cx} ${cy})`,fill:"#ffe45c","fill-opacity":S.op/100,stroke:"#d9b800","stroke-opacity":.6,"stroke-width":1.5},L);
+    const y=TRACKS[f.t].y,g=el("g",{"data-i":i,style:"cursor:grab"},F);
+    if(f.tilt>0)el("line",{x1:f.x,y1:y,x2:f.x+dx*30,y2:y+dy*30,stroke:TC,"stroke-width":3,"stroke-linecap":"round"},g);
+    el("rect",{x:f.x-13,y:y-24,width:26,height:48,rx:9,fill:TC,stroke:i===sel?"#ff7a00":RING,"stroke-width":i===sel?5:2},g);
+    if(showCentre)el("circle",{cx,cy,r:5,fill:"#c00"},F);
+  });
+  $("count").textContent=S.fx.length+" fixture"+(S.fx.length===1?"":"s")+" on plan";
+  panel();
+}
+function panel(){
+  const f=S.fx[sel];$("ctl").hidden=!f;$("none").hidden=!!f;
+  $("scale").value=S.scale;$("op").value=S.op;$("vOp").textContent=S.op+"%";
+  if(!f)return;
+  $("tilt").value=f.tilt;$("az").value=f.az;$("beam").value=f.beam;$("h").value=f.h;
+  $("vTilt").textContent=f.tilt+"°";$("vAz").textContent=f.az+"°";$("vBeam").textContent=f.beam+"°";$("vH").textContent=f.h.toFixed(1)+" m";
+  const p=footprint(f);
+  $("read").innerHTML=f.tilt===0?`Aimed straight down: spot ≈ <b>${(2*p.rMin).toFixed(2)} m</b> across.`:`Oval ≈ <b>${(2*p.rMaj).toFixed(1)} × ${(2*p.rMin).toFixed(1)} m</b>, centred ${p.off.toFixed(1)} m from the fixture.`;
+}
+function pt(e){const q=svg.createSVGPoint();q.x=e.clientX;q.y=e.clientY;return q.matrixTransform(svg.getScreenCTM().inverse())}
+function nearest(p){let b=0,bd=1e9;TRACKS.forEach((k,i)=>{const d=Math.abs(p.y-k.y);if(d<bd){bd=d;b=i}});return {i:b,d:bd}}
+const clampX=(i,x)=>Math.min(TRACKS[i].x2-14,Math.max(TRACKS[i].x1+14,x));
+svg.addEventListener("pointerdown",e=>{
+  const g=e.target.closest("[data-i]"),p=pt(e);
+  if(g){sel=+g.dataset.i;drag=sel;svg.setPointerCapture(e.pointerId);draw();return}
+  const n=nearest(p);
+  if(mode==="add"&&n.d<22&&p.x>TRACKS[n.i].x1-10&&p.x<TRACKS[n.i].x2+10){
+    const base=S.fx[sel]||D;
+    S.fx.push({t:n.i,x:clampX(n.i,p.x),tilt:base.tilt,az:base.az,beam:base.beam,h:base.h});
+    sel=S.fx.length-1;save();draw();
+  }else if(mode==="sel"){sel=-1;draw()}
+});
+svg.addEventListener("pointermove",e=>{
+  if(drag===null)return;
+  const f=S.fx[drag],p=pt(e),n=nearest(p);
+  if(n.d<60)f.t=n.i;
+  f.x=clampX(f.t,p.x);draw();
+});
+svg.addEventListener("pointerup",()=>{if(drag!==null){drag=null;save()}});
+function bind(id,key){$(id).addEventListener("input",e=>{const f=S.fx[sel];if(!f)return;f[key]=+e.target.value;save();draw()})}
+bind("tilt","tilt");bind("az","az");bind("beam","beam");bind("h","h");
+$("scale").addEventListener("input",e=>{S.scale=Math.max(10,+e.target.value||62);save();draw()});
+$("op").addEventListener("input",e=>{S.op=+e.target.value;save();draw()});
+function del(){if(S.fx[sel]){S.fx.splice(sel,1);sel=S.fx.length-1;save();draw()}}
+$("del").onclick=del;
+$("dup").onclick=()=>{const f=S.fx[sel];if(!f)return;S.fx.push({...f,x:clampX(f.t,f.x+60)});sel=S.fx.length-1;save();draw()};
+$("applyAll").onclick=()=>{const f=S.fx[sel];if(!f)return;S.fx.forEach(o=>{o.tilt=f.tilt;o.az=f.az;o.beam=f.beam;o.h=f.h});save();draw()};
+$("bClear").onclick=()=>{if(S.fx.length&&confirm("Remove all fixtures?")){S.fx=[];sel=-1;save();draw()}};
+$("mAdd").onclick=()=>{mode="add";$("mAdd").classList.add("on");$("mSel").classList.remove("on")};
+$("mSel").onclick=()=>{mode="sel";$("mSel").classList.add("on");$("mAdd").classList.remove("on")};
+$("bLight").onclick=e=>{showLight=!showLight;e.target.classList.toggle("on",showLight);draw()};
+$("bInv").onclick=()=>{S.inv=!S.inv;save();draw()};
+$("bGlow").onclick=e=>{showCentre=!showCentre;e.target.classList.toggle("on",showCentre);draw()};
+addEventListener("keydown",e=>{
+  if(/INPUT|TEXTAREA/.test(document.activeElement.tagName)&&document.activeElement.type!=="range")return;
+  const f=S.fx[sel];if(!f)return;
+  if(e.key==="Delete"||e.key==="Backspace"){del();e.preventDefault()}
+  if(e.key==="ArrowLeft"||e.key==="ArrowRight"){f.x=clampX(f.t,f.x+(e.key==="ArrowRight"?1:-1)*(e.shiftKey?20:4));save();draw();e.preventDefault()}
+});
+if(sel>=S.fx.length)sel=S.fx.length-1;
+draw();
+</script>
+</body>
+</html>
