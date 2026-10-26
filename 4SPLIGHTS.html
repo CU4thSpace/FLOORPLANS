@@ -39,6 +39,7 @@ input[type=number]{width:100%;font:inherit;padding:4px 6px;border:1px solid var(
   <button id="bLight" class="on">Light</button>
   <button id="bGlow">Show beam centres</button>
   <button id="bInv">Invert plan</button>
+  <button id="bPng">Download PNG</button>
   <button id="bClear">Clear all</button>
 </header>
 <main>
@@ -150,6 +151,29 @@ $("mSel").onclick=()=>{mode="sel";$("mSel").classList.add("on");$("mAdd").classL
 $("bLight").onclick=e=>{showLight=!showLight;e.target.classList.toggle("on",showLight);draw()};
 $("bInv").onclick=()=>{S.inv=!S.inv;save();draw()};
 $("bGlow").onclick=e=>{showCentre=!showCentre;e.target.classList.toggle("on",showCentre);draw()};
+const load=(src,cors)=>new Promise((res,rej)=>{const i=new Image();if(cors)i.crossOrigin="anonymous";i.onload=()=>res(i);i.onerror=()=>rej(new Error("image failed to load"));i.src=src});
+$("bPng").onclick=async()=>{
+  const keep=sel;sel=-1;draw();
+  try{
+    const clone=svg.cloneNode(true),im=clone.querySelector("image");
+    let href=im.getAttribute("href");
+    if(!href.startsWith("data:")){
+      const img=await load(href,true),c=document.createElement("canvas");
+      c.width=1984;c.height=1544;c.getContext("2d").drawImage(img,0,0,1984,1544);href=c.toDataURL("image/png");
+    }
+    im.setAttribute("href",href);im.setAttributeNS("http://www.w3.org/1999/xlink","xlink:href",href);
+    clone.setAttribute("xmlns",NS);clone.setAttribute("xmlns:xlink","http://www.w3.org/1999/xlink");
+    clone.setAttribute("width",1984);clone.setAttribute("height",1544);
+    clone.setAttribute("style","background:"+(S.inv?"#111":"#fff"));
+    const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:"image/svg+xml"}));
+    const out=await load(url),c=document.createElement("canvas");
+    c.width=1984;c.height=1544;const x=c.getContext("2d");
+    x.fillStyle=S.inv?"#111":"#fff";x.fillRect(0,0,1984,1544);x.drawImage(out,0,0);
+    URL.revokeObjectURL(url);
+    c.toBlob(b=>{const a=document.createElement("a");a.download="4thSpace_LightingPlan_"+new Date().toLocaleDateString("en-CA")+".png";a.href=URL.createObjectURL(b);a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)});
+  }catch(e){alert("Could not export the PNG: "+e.message)}
+  sel=keep;draw();
+};
 addEventListener("keydown",e=>{
   if(/INPUT|TEXTAREA/.test(document.activeElement.tagName)&&document.activeElement.type!=="range")return;
   const f=S.fx[sel];if(!f)return;
