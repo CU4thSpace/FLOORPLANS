@@ -45,6 +45,7 @@ input[type=number]{width:100%;font:inherit;padding:4px 6px;border:1px solid var(
 <div id="stage">
 <svg id="plan" viewBox="0 0 1984 1544" aria-label="Floorplan with track lighting">
   <image id="bg" width="1984" height="1544"/>
+  <defs><radialGradient id="fade"><stop offset="0" stop-color="#ffe45c" stop-opacity="1"/><stop offset="0.45" stop-color="#ffe45c" stop-opacity="0.85"/><stop offset="0.75" stop-color="#ffe45c" stop-opacity="0.35"/><stop offset="1" stop-color="#ffe45c" stop-opacity="0"/></radialGradient></defs>
   <g id="tracks"></g><g id="lights" style="mix-blend-mode:multiply"></g><g id="fix"></g>
 </svg>
 </div>
@@ -97,7 +98,7 @@ function draw(){
   S.fx.forEach((f,i)=>{
     const p=footprint(f),az=rad(f.az),dx=Math.sin(az),dy=-Math.cos(az);
     const cx=f.x+dx*p.off*S.scale,cy=TRACKS[f.t].y+dy*p.off*S.scale;
-    if(showLight)el("ellipse",{cx,cy,rx:p.rMaj*S.scale,ry:p.rMin*S.scale,transform:`rotate(${f.az-90} ${cx} ${cy})`,fill:"#ffe45c","fill-opacity":S.op/100,stroke:"#d9b800","stroke-opacity":.6,"stroke-width":1.5},L);
+    if(showLight)el("ellipse",{cx,cy,rx:p.rMaj*S.scale,ry:p.rMin*S.scale,transform:`rotate(${f.az-90} ${cx} ${cy})`,fill:"url(#fade)","fill-opacity":S.op/100},L);
     const y=TRACKS[f.t].y,g=el("g",{"data-i":i,style:"cursor:grab"},F);
     if(f.tilt>0)el("line",{x1:f.x,y1:y,x2:f.x+dx*30,y2:y+dy*30,stroke:TC,"stroke-width":3,"stroke-linecap":"round"},g);
     el("rect",{x:f.x-13,y:y-24,width:26,height:48,rx:9,fill:TC,stroke:i===sel?"#ff7a00":RING,"stroke-width":i===sel?5:2},g);
