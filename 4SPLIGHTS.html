@@ -35,6 +35,7 @@ input[type=number]{width:100%;font:inherit;padding:4px 6px;border:1px solid var(
 <header>
   <h1>LB-103 lighting plan</h1>
   <button id="mAdd" class="on">Add fixtures</button>
+  <button id="mSpot">Add spots</button>
   <button id="mSel">Select / move</button>
   <button id="bLight" class="on">Light</button>
   <button id="bGlow">Show beam centres</button>
@@ -52,13 +53,13 @@ input[type=number]{width:100%;font:inherit;padding:4px 6px;border:1px solid var(
 </div>
 <aside>
   <h2>Selected fixture</h2>
-  <div id="none" class="hint">Click a track to add a fixture. Click a fixture to edit it, drag it along its track.</div>
+  <div id="none" class="hint">Click a track to add a fixture, or choose Add spots and click anywhere on the plan. Click a fixture or spot to edit it, and drag to move it.</div>
   <div id="ctl" hidden>
     <label>Tilt from straight down <span id="vTilt"></span><input id="tilt" type="range" min="0" max="70" step="1"></label>
     <label>Aim direction (0° = up the plan, clockwise) <span id="vAz"></span><input id="az" type="range" min="0" max="359" step="1"></label>
     <label>Beam angle <span id="vBeam"></span><input id="beam" type="range" min="10" max="80" step="1"></label>
     <label>Mount height (m) <span id="vH"></span><input id="h" type="range" min="2" max="6" step="0.1"></label>
-    <div class="row"><button id="applyAll">Apply to all fixtures</button><button id="dup">Duplicate</button><button id="del">Delete</button></div>
+    <div class="row"><button id="applyAll">Apply to all fixtures</button><button id="dup">Duplicate</button><button id="rot">Rotate symbol</button><button id="del">Delete</button></div>
     <div class="read" id="read"></div>
   </div>
   <h2>Plan</h2>
@@ -72,14 +73,18 @@ input[type=number]{width:100%;font:inherit;padding:4px 6px;border:1px solid var(
 <script>
 const IMG="https://cu4thspace.github.io/LB103/4SPLightPlan.001.png";
 const NS="http://www.w3.org/2000/svg";
-const TRACKS=[{y:521,x1:506,x2:1435},{y:711,x1:218,x2:1441},{y:896,x1:218,x2:1441},{y:1040,x1:218,x2:1441}];
+const TRACKS=[{y:521,x1:506,x2:1435},{y:711,x1:218,x2:1441},{y:896,x1:218,x2:1441},{y:1040,x1:218,x2:1441},{y:1158,x1:811,x2:1007,c:1}];
 const D={tilt:0,az:0,beam:36,h:3.5};
 let S={scale:62,op:38,fx:[{t:1,x:1408,tilt:0,az:0,beam:36,h:3.5}]},sel=0,mode="add",showLight=true,showCentre=false,drag=null;
 try{const s=JSON.parse(localStorage.getItem("lb103-lights-v2")||"null");if(s&&s.fx)S=s}catch(e){}
+if(!S.seeded){S.seeded=1;
+  [[812,380],[886,380],[960,380],[1036,380],[1110,380],[1185,380],[246,444],[321,444],[396,444],[246,520],[321,520],[396,520]].forEach(([x,y])=>S.fx.push({k:"s",x,y,rot:0,tilt:0,az:0,beam:36,h:3.5}));
+  [712,758,810,862,914].forEach(y=>S.fx.push({k:"s",x:1525,y,rot:90,tilt:0,az:0,beam:36,h:3.5}))}
 const $=id=>document.getElementById(id),svg=$("plan");
 $("bg").setAttribute("href",IMG);
 const el=(n,a,p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
 const rad=d=>d*Math.PI/180;
+const Y=f=>f.k==="s"?f.y:TRACKS[f.t].y;
 function save(){try{localStorage.setItem("lb103-lights-v2",JSON.stringify(S))}catch(e){}}
 function footprint(f){ // floor ellipse in metres, relative to the fixture
   const a=rad(f.beam/2),t=rad(f.tilt),lo=Math.max(t-a,0),hi=Math.min(t+a,rad(80));
@@ -88,31 +93,31 @@ function footprint(f){ // floor ellipse in metres, relative to the fixture
   return {off:(near+far)/2,rMaj:(far-near)/2,rMin:slant*Math.tan(a)};
 }
 function draw(){
-  const inv=!!S.inv,TC=inv?"#7f88ff":"#2b2f8f",RING=inv?"#111":"#fff";
+  const inv=!!S.inv,TC=inv?"#7f88ff":"#2b2f8f",RING=inv?"#111":"#fff",RED=inv?"#ff6b60":"#f03c32";
   svg.style.background=inv?"#111":"#fff";
   $("bg").style.filter=inv?"invert(1)":"none";
   $("lights").style.mixBlendMode=inv?"screen":"multiply";
   $("bInv").classList.toggle("on",inv);
   const T=$("tracks");T.innerHTML="";
-  TRACKS.forEach((k,i)=>el("rect",{x:k.x1,y:k.y-4,width:k.x2-k.x1,height:8,fill:TC,rx:2},T));
+  TRACKS.forEach((k,i)=>el("rect",{x:k.x1,y:k.y-4,width:k.x2-k.x1,height:8,fill:k.c?RED:TC,rx:2},T));
   const L=$("lights"),F=$("fix");L.innerHTML="";F.innerHTML="";
   S.fx.forEach((f,i)=>{
     const p=footprint(f),az=rad(f.az),dx=Math.sin(az),dy=-Math.cos(az);
-    const cx=f.x+dx*p.off*S.scale,cy=TRACKS[f.t].y+dy*p.off*S.scale;
+    const cx=f.x+dx*p.off*S.scale,cy=Y(f)+dy*p.off*S.scale;
     if(showLight)el("ellipse",{cx,cy,rx:p.rMaj*S.scale,ry:p.rMin*S.scale,transform:`rotate(${f.az-90} ${cx} ${cy})`,fill:"url(#fade)","fill-opacity":S.op/100},L);
-    const y=TRACKS[f.t].y,g=el("g",{"data-i":i,style:"cursor:grab"},F);
-    if(f.tilt>0)el("line",{x1:f.x,y1:y,x2:f.x+dx*30,y2:y+dy*30,stroke:TC,"stroke-width":3,"stroke-linecap":"round"},g);
-    el("rect",{x:f.x-13,y:y-24,width:26,height:48,rx:9,fill:TC,stroke:i===sel?"#ff7a00":RING,"stroke-width":i===sel?5:2},g);
+    const y=Y(f),sp=f.k==="s",g=el("g",{"data-i":i,style:"cursor:grab"},F);
+    if(f.tilt>0)el("line",{x1:f.x,y1:y,x2:f.x+dx*20,y2:y+dy*20,stroke:sp?RED:TC,"stroke-width":3,"stroke-linecap":"round"},g);
+    el("rect",{x:f.x-(sp?12:8),y:y-(sp?7:14),width:sp?24:16,height:sp?14:28,rx:sp?7:6,fill:sp?RED:TC,transform:"rotate("+(sp?f.rot||0:0)+" "+f.x+" "+y+")",stroke:i===sel?"#ff7a00":RING,"stroke-width":i===sel?4:2},g);
     if(showCentre)el("circle",{cx,cy,r:5,fill:"#c00"},F);
   });
-  $("count").textContent=S.fx.length+" fixture"+(S.fx.length===1?"":"s")+" on plan";
+  const ns=S.fx.filter(f=>f.k==="s").length;$("count").textContent=(S.fx.length-ns)+" track fixtures, "+ns+" spots on plan";
   panel();
 }
 function panel(){
   const f=S.fx[sel];$("ctl").hidden=!f;$("none").hidden=!!f;
   $("scale").value=S.scale;$("op").value=S.op;$("vOp").textContent=S.op+"%";
   if(!f)return;
-  $("tilt").value=f.tilt;$("az").value=f.az;$("beam").value=f.beam;$("h").value=f.h;
+  $("rot").hidden=f.k!=="s";$("tilt").value=f.tilt;$("az").value=f.az;$("beam").value=f.beam;$("h").value=f.h;
   $("vTilt").textContent=f.tilt+"°";$("vAz").textContent=f.az+"°";$("vBeam").textContent=f.beam+"°";$("vH").textContent=f.h.toFixed(1)+" m";
   const p=footprint(f);
   $("read").innerHTML=f.tilt===0?`Aimed straight down: spot ≈ <b>${(2*p.rMin).toFixed(2)} m</b> across.`:`Oval ≈ <b>${(2*p.rMaj).toFixed(1)} × ${(2*p.rMin).toFixed(1)} m</b>, centred ${p.off.toFixed(1)} m from the fixture.`;
@@ -128,13 +133,12 @@ svg.addEventListener("pointerdown",e=>{
     const base=S.fx[sel]||D;
     S.fx.push({t:n.i,x:clampX(n.i,p.x),tilt:base.tilt,az:base.az,beam:base.beam,h:base.h});
     sel=S.fx.length-1;save();draw();
-  }else if(mode==="sel"){sel=-1;draw()}
+  }else if(mode==="spot"){const base=S.fx[sel]||D;S.fx.push({k:"s",x:Math.round(p.x),y:Math.round(p.y),rot:0,tilt:base.tilt,az:base.az,beam:base.beam,h:base.h});sel=S.fx.length-1;save();draw()}else if(mode==="sel"){sel=-1;draw()}
 });
 svg.addEventListener("pointermove",e=>{
   if(drag===null)return;
   const f=S.fx[drag],p=pt(e),n=nearest(p);
-  if(n.d<60)f.t=n.i;
-  f.x=clampX(f.t,p.x);draw();
+  if(f.k==="s"){f.x=Math.round(p.x);f.y=Math.round(p.y)}else{if(n.d<60)f.t=n.i;f.x=clampX(f.t,p.x)}draw();
 });
 svg.addEventListener("pointerup",()=>{if(drag!==null){drag=null;save()}});
 function bind(id,key){$(id).addEventListener("input",e=>{const f=S.fx[sel];if(!f)return;f[key]=+e.target.value;save();draw()})}
@@ -143,11 +147,13 @@ $("scale").addEventListener("input",e=>{S.scale=Math.max(10,+e.target.value||62)
 $("op").addEventListener("input",e=>{S.op=+e.target.value;save();draw()});
 function del(){if(S.fx[sel]){S.fx.splice(sel,1);sel=S.fx.length-1;save();draw()}}
 $("del").onclick=del;
-$("dup").onclick=()=>{const f=S.fx[sel];if(!f)return;S.fx.push({...f,x:clampX(f.t,f.x+60)});sel=S.fx.length-1;save();draw()};
-$("applyAll").onclick=()=>{const f=S.fx[sel];if(!f)return;S.fx.forEach(o=>{o.tilt=f.tilt;o.az=f.az;o.beam=f.beam;o.h=f.h});save();draw()};
+$("rot").onclick=()=>{const f=S.fx[sel];if(!f)return;f.rot=((f.rot||0)+90)%180;save();draw()};
+$("dup").onclick=()=>{const f=S.fx[sel];if(!f)return;S.fx.push({...f,x:f.k==="s"?f.x+30:clampX(f.t,f.x+60)});sel=S.fx.length-1;save();draw()};
+$("applyAll").onclick=()=>{const f=S.fx[sel];if(!f)return;S.fx.forEach(o=>{if((o.k==="s")!==(f.k==="s"))return;o.tilt=f.tilt;o.az=f.az;o.beam=f.beam;o.h=f.h});save();draw()};
 $("bClear").onclick=()=>{if(S.fx.length&&confirm("Remove all fixtures?")){S.fx=[];sel=-1;save();draw()}};
-$("mAdd").onclick=()=>{mode="add";$("mAdd").classList.add("on");$("mSel").classList.remove("on")};
-$("mSel").onclick=()=>{mode="sel";$("mSel").classList.add("on");$("mAdd").classList.remove("on")};
+const setMode=m=>{mode=m;[["add","mAdd"],["spot","mSpot"],["sel","mSel"]].forEach(([k,id])=>$(id).classList.toggle("on",k===m))};
+$("mAdd").onclick=()=>setMode("add");$("mSpot").onclick=()=>setMode("spot");
+$("mSel").onclick=()=>setMode("sel");
 $("bLight").onclick=e=>{showLight=!showLight;e.target.classList.toggle("on",showLight);draw()};
 $("bInv").onclick=()=>{S.inv=!S.inv;save();draw()};
 $("bGlow").onclick=e=>{showCentre=!showCentre;e.target.classList.toggle("on",showCentre);draw()};
@@ -178,7 +184,9 @@ addEventListener("keydown",e=>{
   if(/INPUT|TEXTAREA/.test(document.activeElement.tagName)&&document.activeElement.type!=="range")return;
   const f=S.fx[sel];if(!f)return;
   if(e.key==="Delete"||e.key==="Backspace"){del();e.preventDefault()}
-  if(e.key==="ArrowLeft"||e.key==="ArrowRight"){f.x=clampX(f.t,f.x+(e.key==="ArrowRight"?1:-1)*(e.shiftKey?20:4));save();draw();e.preventDefault()}
+  const st=e.shiftKey?20:4,sp=f.k==="s";
+  if(sp&&(e.key==="ArrowUp"||e.key==="ArrowDown")){f.y+=(e.key==="ArrowDown"?1:-1)*st;save();draw();e.preventDefault()}
+  if(e.key==="ArrowLeft"||e.key==="ArrowRight"){const nx=f.x+(e.key==="ArrowRight"?1:-1)*st;f.x=sp?nx:clampX(f.t,nx);save();draw();e.preventDefault()}
 });
 if(sel>=S.fx.length)sel=S.fx.length-1;
 draw();
