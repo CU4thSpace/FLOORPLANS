@@ -90,7 +90,8 @@ const TRACKS=[{y:488,x1:508,x2:1436,c:1,l:"C"},{y:525,x1:508,x2:1436,l:"B"},{y:7
 const D={tilt:0,az:0,beam:36,h:3.5};
 let S={scale:62,op:38,fx:[{t:5,x:1402,tilt:0,az:0,beam:36,h:3.5},{t:4,x:1348,tilt:0,az:0,beam:36,h:3.5}]},sel=0,mode="add",showLight=true,showCentre=false,drag=null;
 try{const s=JSON.parse(localStorage.getItem("lb103-lights-v3")||"null");if(s&&s.fx)S=s}catch(e){}
-if(!S.seeded){S.seeded=1;
+if(S.inv===undefined)S.inv=true;
+  if(!S.seeded){S.seeded=1;
   [[812,380],[886,380],[960,380],[1036,380],[1110,380],[1185,380],[246,444],[321,444],[396,444],[246,520],[321,520],[396,520]].forEach(([x,y])=>S.fx.push({k:"s",g:y<400?"A":"P",x,y,rot:0,tilt:0,az:0,beam:36,h:3.5}));
   [712,758,810,862,914].forEach(y=>S.fx.push({k:"s",g:"R",x:1525,y,rot:90,tilt:0,az:0,beam:36,h:3.5}))}
 const $=id=>document.getElementById(id),svg=$("plan");
